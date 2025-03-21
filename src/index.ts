@@ -245,6 +245,66 @@ app.patch("/menu/:id", async (c) => {
   }
 });
 
+app.post("/orders", async (context) => {
+  try {
+    const { customerId, restaurantId, orderItems } = await context.req.json();
+
+    // Check if customer exists
+    const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) {
+      return context.json({ error: "Customer not found" }, 404);
+    }
+
+    // Check if restaurant exists
+    const restaurant = await prisma.restaurant.findUnique({ where: { id: restaurantId } });
+    if (!restaurant) {
+      return context.json({ error: "Restaurant not found" }, 404);
+    }
+
+    let totalPrice = 0;
+    
+
+    // Validate menu items and calculate total price
+    for (const item of orderItems) {
+      const menuItem = await prisma.menuItem.findUnique({ where: { id: item.menuItemId } });
+
+      if (!menuItem) {
+        return context.json({ error: `Menu item with id ${item.menuItemId} not found` }, 404);
+      }
+      if (!menuItem.isAvailable) {
+        return context.json({ error: `Menu item ${menuItem.name} is not available` }, 400);
+      }
+
+      totalPrice += Number(menuItem.price) * item.quantity;
+      
+    }
+
+    // Create order
+    const order = await prisma.order.create({
+      data: {
+        customerId,
+        restaurantId,
+        totalPrice,
+      
+        items: {
+          create: orderItems.map(
+            (item: { menuItemId: string; quantity: number }) => ({
+              menuItemId: item.menuItemId,
+              quantity: item.quantity,
+            })
+          )
+        },
+      },
+      include: { items: true }, // Include order items in response
+    });
+
+    return context.json(order, 201);
+  } catch (error) {
+    console.error("Error placing order:", error);
+    return context.json({ error: "Internal Server Error" }, 500);
+  }
+});
+
 
 
 
